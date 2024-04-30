@@ -1,0 +1,16 @@
+{
+  "name": "sockets-tutorial",
+  "version": "1.0.0",
+  "description": "Websocket with node js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Pablo Torres",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.3",
+    "path": "^0.12.7",
+    "ws": "^7.5.7"
+  }
+}
