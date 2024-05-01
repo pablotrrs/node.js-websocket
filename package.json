@@ -9,7 +9,13 @@
   "author": "Pablo Torres",
   "license": "ISC",
   "dependencies": {
+    "@mapbox/node-pre-gyp": "^1.0.11",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow/tfjs-node": "^4.19.0",
+    "@tensorflow/tfjs-node-gpu": "^4.19.0",
+    "bcrypt": "^5.1.1",
     "express": "^4.17.3",
+    "fluidb": "^0.3.0",
     "path": "^0.12.7",
     "ws": "^7.5.7"
   }
