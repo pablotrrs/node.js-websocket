@@ -1,11 +1,13 @@
-const path      = require('path');
-const express   = require('express');
+const os = require('os');
+const http = require("http");
+const path = require('path');
+const express = require('express');
 const WebSocket = require('ws');
 //const cocoSsd   = require('@tensorflow-models/coco-ssd');
 //const tf        = require('@tensorflow/tfjs-node');
 //const fluidb    = require('fluidb');
-let sensors     = require('./sensor.json');
-const app       = express();
+let sensors = require('./sensor.json');
+const app = express();
 
 app.use('/static', express.static(path.join(__dirname, 'public')));
 
@@ -39,98 +41,147 @@ async function loadModel() {
 loadModel().then(model => {
     console.log('AI Model - Done');
 */
-    // Clients
-    const wss = new WebSocket.Server({ port: '8999'}, () => console.log('WS Server is listening at 8999'));
+// Clients
+const wss = new WebSocket.Server({ port: '8999' }, () => console.log('WS Server is listening at 8999'));
 
-    wss.on('connection', ws => {
-        ws.on('message', data => {
-            if (ws.readyState !== ws.OPEN) return;
-            connectedClients.push(ws);
+wss.on('connection', ws => {
+  ws.on('message', data => {
+    if (ws.readyState !== ws.OPEN) return;
+    connectedClients.push(ws);
 
-            try {
-                data = JSON.parse(data);
+    try {
+      data = JSON.parse(data);
 
-                if (data.operation === 'function') {
-                    if (sensors[data.command.recipient] ) {
-                        sensors[data.command.recipient].command = data.command.message.key + '=' + data.command.message.value;
-                    }
+      if (data.operation === 'function') {
+        if (sensors[data.command.recipient]) {
+          sensors[data.command.recipient].command = data.command.message.key + '=' + data.command.message.value;
+        }
 
-                    console.log(data);
-                }
-            } catch (error) {}
-        });
-    });
+        console.log(data);
+      }
+    } catch (error) { }
+  });
+});
 
 
-    // Sensors
-    Object.entries(sensors).forEach(([sensorKey]) => {
-        const connection = sensors[sensorKey];
+// Sensors
+Object.entries(sensors).forEach(([sensorKey]) => {
+  const connection = sensors[sensorKey];
 
-        const server = new WebSocket.Server({ port: connection.port }, () => { console.log(`WS Server is listening at ${ connection.port }`);}).on('connection', (ws) => {
-            ws.on('message', data => {
-                if (ws.readyState !== ws.OPEN) return;
+  const server = new WebSocket.Server({ port: connection.port }, () => { console.log(`WS Server is listening at ${connection.port}`); }).on('connection', (ws) => {
+    ws.on('message', data => {
+      if (ws.readyState !== ws.OPEN) return;
 
-                if (connection.command) {
-                    console.log('sending');
-                    ws.send(connection.command);
-                    connection.command = null; // consume
-                }
+      if (connection.command) {
+        console.log('sending');
+        ws.send(connection.command);
+        connection.command = null; // consume
+      }
 
-                if (typeof data === 'object') {
-                    let img = Buffer.from(Uint8Array.from(data)).toString('base64');
-                    connection.counter++;
+      if (typeof data === 'object') {
+        let img = Buffer.from(Uint8Array.from(data)).toString('base64');
+        connection.counter++;
 
-                    if (connection.counter === connection.frequency) {   
-                        connection.counter = 0;             
-                        let imgTensor = tf.node.decodeImage(new Uint8Array(data), 3);
+        if (connection.counter === connection.frequency) {
+          connection.counter = 0;
+          let imgTensor = tf.node.decodeImage(new Uint8Array(data), 3);
 
-                        model.detect(imgTensor).then((predictions) => {
-                            predictions.forEach((prediction) => {
-                                console.log(prediction.class + ' - ' + prediction.score);
+          model.detect(imgTensor).then((predictions) => {
+            predictions.forEach((prediction) => {
+              console.log(prediction.class + ' - ' + prediction.score);
 
-                                if (validEntities.includes(prediction.class) && prediction.score > connection.threshold) {
-                                    new fluidb('./images/' + prediction.class + '/' + Date.now(), { 'score' : prediction.score, 'img' : img, 'bbox' : prediction.bbox});
-                                }
-                            });
-
-                            tf.dispose([imgTensor]);
-                        });
-                    }
-
-                    connection.image = img;
-                } else {
-                    let sensorData = data;
-
-                    if (data.includes(';')) {
-                        let dataArray = data.split(";");
-                        sensorData = dataArray[0].split("=")[1];
-                        let states = dataArray[1].split(":")[1].split(",");
-
-                        states.forEach(state => {
-                            let [key, value] = state.split("=");
-                            const commandFind = connection.commands.find(c => c.id === key);
-
-                            if (commandFind) {
-                                commandFind.state = value;
-                            }
-                        });
-                    }
-
-                    connection.sensors = sensorData.split(",").reduce((acc, item) => {
-                        const key = item.split("=")[0];
-                        const value = item.split("=")[1];
-                        acc[key] = value;
-                        return acc;
-                    }, {});
-                }
-
-                connectedClients.forEach(client => {
-                    client.send(JSON.stringify({ devices: sensors }));
-                });
+              if (validEntities.includes(prediction.class) && prediction.score > connection.threshold) {
+                new fluidb('./images/' + prediction.class + '/' + Date.now(), { 'score': prediction.score, 'img': img, 'bbox': prediction.bbox });
+              }
             });
-        });
+
+            tf.dispose([imgTensor]);
+          });
+        }
+
+        connection.image = img;
+      } else {
+        let sensorData = data;
+
+        if (data.includes(';')) {
+          let dataArray = data.split(";");
+          sensorData = dataArray[0].split("=")[1];
+          let states = dataArray[1].split(":")[1].split(",");
+
+          states.forEach(state => {
+            let [key, value] = state.split("=");
+            const commandFind = connection.commands.find(c => c.id === key);
+
+            if (commandFind) {
+              commandFind.state = value;
+            }
+          });
+        }
+
+        connection.sensors = sensorData.split(",").reduce((acc, item) => {
+          const key = item.split("=")[0];
+          const value = item.split("=")[1];
+          acc[key] = value;
+          return acc;
+        }, {});
+      }
+
+      connectedClients.forEach(client => {
+        client.send(JSON.stringify({ devices: sensors }));
+      });
     });
+  });
+});
 //});
 
-app.get('/client', (req, res) => {res.sendFile(path.resolve(__dirname, './public/client.html')); });
-app.listen(HTTP_PORT, () => {console.log(`HTTP server starting on ${HTTP_PORT}`); });
+app.get('/isMaster', (_req, res) => {
+  console.log("received request");
+  res.setHeader('Master', 'Yes');
+  res.status(200).send('Master server\r');
+  var ipAddress = _req.headers['x-forwarded-for'] || _req.connection.remoteAddress;
+
+  if (ipAddress.substr(0, 7) == "::ffff:") {
+    ipAddress = ipAddress.substr(7)
+  }
+  console.log("ESP32 making the request IP address is: " + ipAddress);
+  makeRequestToClient(ipAddress);
+});
+
+async function makeRequestToClient(ipAddress) {
+  const helloWorldMsg = "Hello world";
+
+  const post_options = {
+    hostname: ipAddress,
+    method: "POST",
+    path: "/iAmMaster",
+    headers: {
+      "Content-Type": "plain/text"
+    }
+  }
+
+  const post_request = http.request(post_options);
+
+  post_request.end(helloWorldMsg);
+}
+
+// print the ip address of the server
+const ifaces = os.networkInterfaces();
+Object.keys(ifaces).forEach(ifname => {
+  let alias = 0;
+
+  ifaces[ifname].forEach(iface => {
+    if ('IPv4' !== iface.family || iface.internal !== false) {
+      return;
+    }
+
+    if (alias >= 1) {
+      console.log(ifname + ':' + alias, iface.address);
+    } else {
+      console.log(ifname, iface.address);
+    }
+    ++alias;
+  });
+});
+
+app.get('/client', (req, res) => { res.sendFile(path.resolve(__dirname, './public/client.html')); });
+app.listen(HTTP_PORT, () => { console.log(`HTTP server starting on ${HTTP_PORT}`); });
